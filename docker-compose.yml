@@ -1,0 +1,61 @@
+name: blogtest
+
+services:
+  db:
+    image: postgres:15
+    command: -c max_connections=30
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: blogdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app1:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:pass@db/blogdb
+    cpus: 0.5
+    mem_limit: 1g
+
+  app2:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --workers 2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:pass@db/blogdb
+    cpus: 0.5
+    mem_limit: 1g
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - 8080:80
+    depends_on:
+      - app1
+      - app2
+    cpus: 0.0
+    mem_limit: 256m
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    driver: bridge 
